@@ -1,0 +1,6 @@
+{
+  "name": "Edu Browser",
+  "description": "A professional Android WebView browser optimized for educational content, YouTube integration, and Google compatibility.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

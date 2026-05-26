@@ -63,6 +63,14 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         hideSystemUI()
         
+        // Robust listener to hide status/navigation bar immediately if keyboard or actions show it
+        @Suppress("DEPRECATION")
+        window.decorView.setOnSystemUiVisibilityChangeListener { visibility ->
+            if ((visibility and View.SYSTEM_UI_FLAG_FULLSCREEN) == 0) {
+                hideSystemUI()
+            }
+        }
+        
         setContent {
             MyApplicationTheme {
                 Scaffold(

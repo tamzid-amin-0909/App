@@ -109,6 +109,11 @@ fun BrowserSecurityErrorView(
                     style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
                 )
             }
+
+            JoinTelegramButton(
+                context = androidx.compose.ui.platform.LocalContext.current,
+                modifier = Modifier.fillMaxWidth(0.6f)
+            )
         }
     }
 }

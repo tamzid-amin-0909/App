@@ -24,6 +24,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -44,6 +45,7 @@ fun BrowserTabBar(
     onForwardClick: () -> Unit,
     onRefreshClick: () -> Unit,
     onHomeClick: () -> Unit,
+    onSettingsClick: () -> Unit,
     isOnline: Boolean,
     modifier: Modifier = Modifier
 ) {
@@ -75,21 +77,21 @@ fun BrowserTabBar(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 4.dp, vertical = 3.dp) // Compact padding
+                    .padding(horizontal = 6.dp, vertical = 6.dp) // Beautiful spacious header padding
             ) {
                 // Back Button
                 IconButton(
                     onClick = onBackClick,
                     enabled = canGoBack,
                     modifier = Modifier
-                        .size(32.dp)
+                        .size(36.dp)
                         .testTag("browser_back_btn")
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "Navigate Back",
                         tint = if (canGoBack) iconTintEnabled else iconTintDisabled,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(20.dp)
                     )
                 }
 
@@ -98,14 +100,14 @@ fun BrowserTabBar(
                     onClick = onForwardClick,
                     enabled = canGoForward,
                     modifier = Modifier
-                        .size(32.dp)
+                        .size(36.dp)
                         .testTag("browser_forward_btn")
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowForward,
                         contentDescription = "Navigate Forward",
                         tint = if (canGoForward) iconTintEnabled else iconTintDisabled,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(20.dp)
                     )
                 }
 
@@ -114,17 +116,17 @@ fun BrowserTabBar(
                     modifier = Modifier
                         .weight(1f)
                         .padding(horizontal = 4.dp)
-                        .height(30.dp) // Compact address bar like chrome
-                        .clip(RoundedCornerShape(15.dp))
+                        .height(36.dp) // Luxurious & spacious address line like Chrome
+                        .clip(RoundedCornerShape(18.dp))
                         .background(capsuleBg)
-                        .border(1.dp, capsuleBorder, RoundedCornerShape(15.dp))
+                        .border(1.dp, capsuleBorder, RoundedCornerShape(18.dp))
                         .clickable(onClick = onHomeClick)
-                        .padding(horizontal = 10.dp, vertical = 2.dp),
+                        .padding(horizontal = 12.dp, vertical = 4.dp),
                     contentAlignment = Alignment.CenterStart
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         // Connection Security/State Indicator
@@ -133,7 +135,7 @@ fun BrowserTabBar(
                             imageVector = if (isHttps) Icons.Default.Lock else Icons.Default.Info,
                             contentDescription = "Connection Security Status",
                             tint = if (isHttps) Color(0xFF10B981) else Color(0xFFEF4444), // Tailwind Emerald-500 / Red-500
-                            modifier = Modifier.size(12.dp)
+                            modifier = Modifier.size(13.dp)
                         )
 
                         Column(
@@ -144,7 +146,7 @@ fun BrowserTabBar(
                                 text = displayDomain.ifEmpty { "Loading..." },
                                 style = MaterialTheme.typography.bodySmall.copy(
                                     fontWeight = FontWeight.Medium,
-                                    fontSize = 11.sp,
+                                    fontSize = 12.sp,
                                     fontFamily = FontFamily.SansSerif
                                 ),
                                 maxLines = 1,
@@ -169,14 +171,14 @@ fun BrowserTabBar(
                 IconButton(
                     onClick = onRefreshClick,
                     modifier = Modifier
-                        .size(32.dp)
+                        .size(36.dp)
                         .testTag("browser_refresh_btn")
                 ) {
                     Icon(
                         imageVector = Icons.Default.Refresh,
                         contentDescription = "Reload Page",
                         tint = iconTintEnabled,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(20.dp)
                     )
                 }
 
@@ -184,14 +186,29 @@ fun BrowserTabBar(
                 IconButton(
                     onClick = onHomeClick,
                     modifier = Modifier
-                        .size(32.dp)
+                        .size(36.dp)
                         .testTag("browser_home_btn")
                 ) {
                     Icon(
                         imageVector = Icons.Default.Home,
                         contentDescription = "Go Home",
                         tint = iconTintEnabled,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+
+                // Settings Button
+                IconButton(
+                    onClick = onSettingsClick,
+                    modifier = Modifier
+                        .size(36.dp)
+                        .testTag("browser_settings_btn")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Settings,
+                        contentDescription = "Open Settings",
+                        tint = iconTintEnabled,
+                        modifier = Modifier.size(20.dp)
                     )
                 }
             }
@@ -223,6 +240,36 @@ fun BrowserProgressBar(
             modifier = modifier
                 .fillMaxWidth()
                 .height(3.dp)
+        )
+    }
+}
+
+@Composable
+fun JoinTelegramButton(
+    context: android.content.Context,
+    modifier: Modifier = Modifier
+) {
+    Button(
+        onClick = {
+            com.example.helpers.UrlHandler.handleUrl(context, "https://t.me/eduzod")
+        },
+        colors = ButtonDefaults.buttonColors(
+            containerColor = Color(0xFF179CDE), // Telegram Blue
+            contentColor = Color.White
+        ),
+        shape = RoundedCornerShape(12.dp),
+        contentPadding = PaddingValues(horizontal = 24.dp, vertical = 12.dp),
+        modifier = modifier
+    ) {
+        Icon(
+            imageVector = Icons.Default.Send,
+            contentDescription = "Telegram Link Icon",
+            modifier = Modifier.size(18.dp)
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = "Join Telegram",
+            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
         )
     }
 }
@@ -299,7 +346,7 @@ fun BrowserOfflineView(
                     .testTag("offline_retry_button")
             ) {
                 Icon(
-                    imageVector = Icons.Default.Refresh,
+                     imageVector = Icons.Default.Refresh,
                     contentDescription = null,
                     modifier = Modifier.size(18.dp)
                 )
@@ -309,6 +356,11 @@ fun BrowserOfflineView(
                     style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
                 )
             }
+
+            JoinTelegramButton(
+                context = LocalContext.current,
+                modifier = Modifier.fillMaxWidth(0.6f)
+            )
         }
     }
 }

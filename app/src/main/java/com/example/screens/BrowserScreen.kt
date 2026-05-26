@@ -25,6 +25,15 @@ import com.example.widgets.BrowserProgressBar
 import com.example.widgets.BrowserTabBar
 import com.example.widgets.BrowserSecurityErrorView
 import kotlinx.coroutines.flow.collectLatest
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.graphics.Color
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
@@ -48,6 +57,8 @@ fun BrowserScreen(
     var isVpnBlocked by remember { mutableStateOf(false) }
     var isProxyBlocked by remember { mutableStateOf(false) }
     var isSslUntrusted by remember { mutableStateOf(false) }
+
+    var isSettingsOpen by remember { mutableStateOf(false) }
 
     // Reference to native WebView for navigation command integration
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
@@ -122,6 +133,7 @@ fun BrowserScreen(
                         }
                     }
                 },
+                onSettingsClick = { isSettingsOpen = true },
                 isOnline = isOnline
             )
 
@@ -331,6 +343,181 @@ fun BrowserScreen(
                         // Swipe refresh configuration update
                     }
                 )
+            }
+        }
+    }
+
+    if (isSettingsOpen) {
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { isSettingsOpen = false }
+        ) {
+            val isDark = androidx.compose.foundation.isSystemInDarkTheme()
+            val cardBg = if (isDark) Color(0xFF1E293B) else Color(0xFFFFFFFF)
+            val titleColor = if (isDark) Color(0xFFF1F5F9) else Color(0xFF0F172A)
+            val descColor = if (isDark) Color(0xFF94A3B8) else Color(0xFF475569)
+            val btnBorderColor = if (isDark) Color(0xFF334155) else Color(0xFFE2E8F0)
+            
+            Card(
+                colors = CardDefaults.cardColors(containerColor = cardBg),
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .padding(24.dp)
+                        .fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Text(
+                        text = "Browser Settings",
+                        style = MaterialTheme.typography.titleLarge.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 20.sp
+                        ),
+                        color = titleColor,
+                        textAlign = TextAlign.Center
+                    )
+                    
+                    Text(
+                        text = "Manage your browsing session, clear secure storage and caches, or sync with our updates.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = descColor,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+
+                    // 1. Join TG Channel (Branded Telegram Blue Option)
+                    Button(
+                        onClick = {
+                            isSettingsOpen = false
+                            UrlHandler.handleUrl(context, "https://t.me/eduzod")
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF179CDE),
+                            contentColor = Color.White
+                        ),
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                        contentPadding = PaddingValues(vertical = 12.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Send,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Channel: Join Telegram",
+                            style = MaterialTheme.typography.labelLarge.copy(
+                                fontWeight = FontWeight.Bold
+                            )
+                        )
+                    }
+
+                    // 2. Clear Cache Option
+                    OutlinedButton(
+                        onClick = {
+                            webViewRef?.clearCache(true)
+                            try {
+                                context.cacheDir.deleteRecursively()
+                            } catch (e: Exception) {}
+                            android.widget.Toast.makeText(context, "Cache Cleared", android.widget.Toast.LENGTH_SHORT).show()
+                        },
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = titleColor
+                        ),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, btnBorderColor),
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                        contentPadding = PaddingValues(vertical = 12.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = null,
+                            tint = if (isDark) Color(0xFFF87171) else Color(0xFFEF4444),
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Clear Cache Only",
+                            style = MaterialTheme.typography.labelLarge.copy(
+                                fontWeight = FontWeight.Medium
+                            )
+                        )
+                    }
+
+                    // 3. Clear Data Option (Full Reset)
+                    OutlinedButton(
+                        onClick = {
+                            isSettingsOpen = false
+                            
+                            // Delete cookies
+                            val cookieManager = CookieManager.getInstance()
+                            cookieManager.removeAllCookies { success ->
+                                cookieManager.flush()
+                            }
+                            
+                            // Delete WebView Storage
+                            WebStorage.getInstance().deleteAllData()
+                            
+                            // Delete Local directories
+                            try {
+                                context.cacheDir.deleteRecursively()
+                                context.filesDir.deleteRecursively()
+                            } catch (e: Exception) {}
+                            
+                            // Reset state & reload
+                            webViewRef?.clearHistory()
+                            webViewRef?.loadUrl(AppConstants.MAIN_URL)
+                            
+                            android.widget.Toast.makeText(context, "All Data & Cookies Reset", android.widget.Toast.LENGTH_LONG).show()
+                        },
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = titleColor
+                        ),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, btnBorderColor),
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                        contentPadding = PaddingValues(vertical = 12.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = null,
+                            tint = if (isDark) Color(0xFFF87171) else Color(0xFFEF4444),
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Clear All Cookies & Data",
+                            style = MaterialTheme.typography.labelLarge.copy(
+                                fontWeight = FontWeight.Medium
+                            )
+                        )
+                    }
+
+                    HorizontalDivider(
+                        color = btnBorderColor,
+                        thickness = 1.dp,
+                        modifier = Modifier.padding(vertical = 4.dp)
+                    )
+
+                    // Close Settings Button
+                    TextButton(
+                        onClick = { isSettingsOpen = false },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "Dismiss Settings",
+                            style = MaterialTheme.typography.labelLarge.copy(
+                                fontWeight = FontWeight.Bold
+                            ),
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
             }
         }
     }

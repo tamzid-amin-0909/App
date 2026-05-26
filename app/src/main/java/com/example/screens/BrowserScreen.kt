@@ -337,6 +337,8 @@ fun BrowserScreen(
                                             javaScriptEnabled = true
                                             domStorageEnabled = true
                                             databaseEnabled = true
+                                            allowFileAccess = true
+                                            allowContentAccess = true
                                             javaScriptCanOpenWindowsAutomatically = true
                                             setSupportMultipleWindows(true)
                                             mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
@@ -351,10 +353,38 @@ fun BrowserScreen(
                                                 request: WebResourceRequest?
                                             ): Boolean {
                                                 val url = request?.url?.toString() ?: return false
+                                                val host = request.url?.host?.lowercase() ?: ""
+                                                
+                                                if (host.contains(AppConstants.TARGET_DOMAIN)) {
+                                                    webViewRef?.loadUrl(url)
+                                                    popupWebView = null
+                                                    CookieManager.getInstance().flush()
+                                                    return true
+                                                }
+                                                
                                                 if (UrlHandler.handleUrl(context, url)) {
                                                     return true
                                                 }
                                                 return false
+                                            }
+
+                                            override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
+                                                super.onPageStarted(view, url, favicon)
+                                                if (url != null) {
+                                                     val uri = android.net.Uri.parse(url)
+                                                     val host = uri.host?.lowercase() ?: ""
+                                                     if (host.contains(AppConstants.TARGET_DOMAIN)) {
+                                                         webViewRef?.loadUrl(url)
+                                                         view?.stopLoading()
+                                                         popupWebView = null
+                                                         CookieManager.getInstance().flush()
+                                                     }
+                                                }
+                                            }
+
+                                            override fun onPageFinished(view: WebView?, url: String?) {
+                                                super.onPageFinished(view, url)
+                                                CookieManager.getInstance().flush()
                                             }
                                         }
                                         

@@ -222,6 +222,7 @@ fun BrowserScreen(
                                 displayZoomControls = false
                                 mediaPlaybackRequiresUserGesture = false
                                 mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+                                javaScriptCanOpenWindowsAutomatically = true
                                 
                                 // Dynamic User Agent Initialization
                                 val defaultUA = WebSettings.getDefaultUserAgent(ctx)

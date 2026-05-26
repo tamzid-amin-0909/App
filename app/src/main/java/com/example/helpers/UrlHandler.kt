@@ -35,8 +35,8 @@ object UrlHandler {
                 return false // Load in-app fallback
             }
             
-            // 2. Telegram redirection
-            if (host.contains("t.me") || host.contains("telegram.me") || host.contains("telegram.org")) {
+            // 2. Telegram redirection (Only launch external Telegram app for chat/channel deep links, never for web auth modules)
+            if (host.contains("t.me") || host.contains("telegram.me")) {
                 val launched = launchAppIfInstalled(
                     context, 
                     url, 

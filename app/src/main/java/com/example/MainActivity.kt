@@ -59,6 +59,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
+        // Initialize global cookies management policies eagerly
+        val cookieManager = android.webkit.CookieManager.getInstance()
+        cookieManager.setAcceptCookie(true)
+        
         // Bind app content fully edge-to-edge
         enableEdgeToEdge()
         hideSystemUI()

@@ -59,6 +59,7 @@ fun BrowserScreen(
     var isSslUntrusted by remember { mutableStateOf(false) }
 
     var isSettingsOpen by remember { mutableStateOf(false) }
+    var popupWebView by remember { mutableStateOf<WebView?>(null) }
 
     // Reference to native WebView for navigation command integration
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
@@ -221,12 +222,13 @@ fun BrowserScreen(
                                 builtInZoomControls = true
                                 displayZoomControls = false
                                 mediaPlaybackRequiresUserGesture = false
-                                mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+                                mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
                                 javaScriptCanOpenWindowsAutomatically = true
+                                setSupportMultipleWindows(true)
                                 
-                                // Dynamic User Agent Initialization
+                                // Uniform, completely stable User Agent Initialization
                                 val defaultUA = WebSettings.getDefaultUserAgent(ctx)
-                                userAgentString = selectUserAgent(currentUrl, defaultUA)
+                                userAgentString = selectUserAgent(defaultUA)
                             }
 
                             // Intercept URL loading redirects
@@ -246,12 +248,6 @@ fun BrowserScreen(
                                     
                                     // Live Security Auditing to block users enabling tools post-app-launch
                                     performSecurityAudit()
-
-                                    // Dynamic User Agent adjustments depending on URL host targeting
-                                    url?.let {
-                                        val defaultUA = WebSettings.getDefaultUserAgent(ctx)
-                                        view?.settings?.userAgentString = selectUserAgent(it, defaultUA)
-                                    }
                                     
                                     // Track history navigation availability
                                     canGoBack = view?.canGoBack() ?: false
@@ -318,6 +314,67 @@ fun BrowserScreen(
                                     return false
                                 }
 
+                                // Handle social login popups and window.open redirects natively
+                                override fun onCreateWindow(
+                                    view: WebView?,
+                                    isDialog: Boolean,
+                                    isUserGesture: Boolean,
+                                    resultMsg: android.os.Message?
+                                ): Boolean {
+                                    val context = view?.context ?: return false
+                                    val newWebView = WebView(context).apply {
+                                        layoutParams = ViewGroup.LayoutParams(
+                                            ViewGroup.LayoutParams.MATCH_PARENT,
+                                            ViewGroup.LayoutParams.MATCH_PARENT
+                                        )
+                                        
+                                        // Align global capabilities for popup container
+                                        val cookieManager = CookieManager.getInstance()
+                                        cookieManager.setAcceptCookie(true)
+                                        cookieManager.setAcceptThirdPartyCookies(this, true)
+                                        
+                                        settings.apply {
+                                            javaScriptEnabled = true
+                                            domStorageEnabled = true
+                                            databaseEnabled = true
+                                            javaScriptCanOpenWindowsAutomatically = true
+                                            setSupportMultipleWindows(true)
+                                            mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                                            
+                                            val defaultUA = WebSettings.getDefaultUserAgent(context)
+                                            userAgentString = selectUserAgent(defaultUA)
+                                        }
+                                        
+                                        webViewClient = object : WebViewClient() {
+                                            override fun shouldOverrideUrlLoading(
+                                                view: WebView?,
+                                                request: WebResourceRequest?
+                                            ): Boolean {
+                                                val url = request?.url?.toString() ?: return false
+                                                if (UrlHandler.handleUrl(context, url)) {
+                                                    return true
+                                                }
+                                                return false
+                                            }
+                                        }
+                                        
+                                        webChromeClient = object : WebChromeClient() {
+                                            override fun onCloseWindow(window: WebView?) {
+                                                popupWebView = null
+                                            }
+                                        }
+                                    }
+                                    
+                                    val transport = resultMsg?.obj as? WebView.WebViewTransport
+                                    if (transport != null) {
+                                        transport.webView = newWebView
+                                        resultMsg.sendToTarget()
+                                        popupWebView = newWebView
+                                        return true
+                                    }
+                                    return false
+                                }
+
                                 // Interactive HTML5 video or rich media fullscreen support
                                 override fun onShowCustomView(view: View?, callback: CustomViewCallback?) {
                                     super.onShowCustomView(view, callback)
@@ -359,6 +416,53 @@ fun BrowserScreen(
                         // Swipe refresh configuration update
                     }
                 )
+            }
+        }
+    }
+
+    // Rendering popup multiple-windows social logins (e.g. Telegram log in) Dialog overlay
+    if (popupWebView != null) {
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = {
+                popupWebView = null
+            },
+            properties = androidx.compose.ui.window.DialogProperties(
+                usePlatformDefaultWidth = false
+            )
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background)
+                    .statusBarsPadding()
+                    .navigationBarsPadding(),
+                contentAlignment = Alignment.Center
+            ) {
+                AndroidView(
+                    modifier = Modifier.fillMaxSize(),
+                    factory = { popupWebView!! }
+                )
+                
+                // Overlay persistent close button for safety
+                IconButton(
+                    onClick = {
+                        popupWebView = null
+                    },
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(16.dp)
+                        .size(48.dp)
+                        .background(
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                            shape = androidx.compose.foundation.shape.CircleShape
+                        )
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Close Popup Window",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
         }
     }
@@ -539,19 +643,12 @@ fun BrowserScreen(
     }
 }
 
-private fun selectUserAgent(url: String?, defaultUA: String): String {
-    if (url == null) return defaultUA
-    val host = android.net.Uri.parse(url).host?.lowercase() ?: ""
-    val isTarget = host.contains("everythingfree.iceiy.com") || host.contains("iceiy.com")
-    
+private fun selectUserAgent(defaultUA: String): String {
     // Clean to look like a standard Mobile Chrome browser to prevent YouTube and Google Auth blocks
     val baseChromeUA = defaultUA
         .replace("; wv", "")
         .replace(Regex("Version/\\d+\\.\\d+"), "")
         
-    return if (isTarget) {
-        "$baseChromeUA EduBrowser/1.0 EduZid"
-    } else {
-        baseChromeUA
-    }
+    // Return unified, stable user agent across all navigation context to align cookies / session states
+    return "$baseChromeUA EduBrowser/1.0 EduZid"
 }

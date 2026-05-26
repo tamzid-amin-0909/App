@@ -353,33 +353,10 @@ fun BrowserScreen(
                                                 request: WebResourceRequest?
                                             ): Boolean {
                                                 val url = request?.url?.toString() ?: return false
-                                                val host = request.url?.host?.lowercase() ?: ""
-                                                
-                                                if (host.contains(AppConstants.TARGET_DOMAIN)) {
-                                                    webViewRef?.loadUrl(url)
-                                                    popupWebView = null
-                                                    CookieManager.getInstance().flush()
-                                                    return true
-                                                }
-                                                
                                                 if (UrlHandler.handleUrl(context, url)) {
                                                     return true
                                                 }
                                                 return false
-                                            }
-
-                                            override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
-                                                super.onPageStarted(view, url, favicon)
-                                                if (url != null) {
-                                                     val uri = android.net.Uri.parse(url)
-                                                     val host = uri.host?.lowercase() ?: ""
-                                                     if (host.contains(AppConstants.TARGET_DOMAIN)) {
-                                                         webViewRef?.loadUrl(url)
-                                                         view?.stopLoading()
-                                                         popupWebView = null
-                                                         CookieManager.getInstance().flush()
-                                                     }
-                                                }
                                             }
 
                                             override fun onPageFinished(view: WebView?, url: String?) {
@@ -391,6 +368,7 @@ fun BrowserScreen(
                                         webChromeClient = object : WebChromeClient() {
                                             override fun onCloseWindow(window: WebView?) {
                                                 popupWebView = null
+                                                webViewRef?.reload()
                                             }
                                         }
                                     }
@@ -455,6 +433,7 @@ fun BrowserScreen(
         androidx.compose.ui.window.Dialog(
             onDismissRequest = {
                 popupWebView = null
+                webViewRef?.reload()
             },
             properties = androidx.compose.ui.window.DialogProperties(
                 usePlatformDefaultWidth = false
@@ -477,6 +456,7 @@ fun BrowserScreen(
                 IconButton(
                     onClick = {
                         popupWebView = null
+                        webViewRef?.reload()
                     },
                     modifier = Modifier
                         .align(Alignment.TopEnd)
@@ -674,11 +654,6 @@ fun BrowserScreen(
 }
 
 private fun selectUserAgent(defaultUA: String): String {
-    // Clean to look like a standard Mobile Chrome browser to prevent YouTube and Google Auth blocks
-    val baseChromeUA = defaultUA
-        .replace("; wv", "")
-        .replace(Regex("Version/\\d+\\.\\d+"), "")
-        
-    // Return unified, stable user agent across all navigation context to align cookies / session states
-    return "$baseChromeUA EduBrowser/1.0 EduZid"
+    // Return unmodified default user agent directly as requested
+    return defaultUA
 }

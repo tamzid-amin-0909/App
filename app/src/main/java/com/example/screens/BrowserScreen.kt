@@ -654,6 +654,11 @@ fun BrowserScreen(
 }
 
 private fun selectUserAgent(defaultUA: String): String {
-    // Return unmodified default user agent directly as requested
-    return defaultUA
+    // Clean to look like a standard Mobile Chrome browser to prevent YouTube and Google Auth blocks
+    val baseChromeUA = defaultUA
+        .replace("; wv", "")
+        .replace(Regex("Version/\\d+\\.\\d+"), "")
+        
+    // Return unified, stable user agent with EduZod/1.0 appended
+    return "$baseChromeUA EduZod/1.0"
 }

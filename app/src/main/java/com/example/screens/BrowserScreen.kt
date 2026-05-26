@@ -90,6 +90,20 @@ fun BrowserScreen(
         }
     }
 
+    // Aggressively dismiss system UI (status/navigation bars) whenever keyboard padding changes
+    val keyboardPadding = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
+    LaunchedEffect(keyboardPadding) {
+        mainActivity?.runOnUiThread {
+            @Suppress("DEPRECATION")
+            mainActivity.window.decorView.systemUiVisibility = (
+                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
+                View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+                View.SYSTEM_UI_FLAG_FULLSCREEN
+            )
+        }
+    }
+
     // Intercept hardware Android back keys
     BackHandler(enabled = canGoBack) {
         webViewRef?.let { web ->
@@ -145,6 +159,7 @@ fun BrowserScreen(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
+                .imePadding()
         ) {
             // Priority check: VPN or Proxy security blocks
             if (isVpnBlocked || isProxyBlocked) {

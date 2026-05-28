@@ -60,6 +60,7 @@ fun BrowserScreen(
 
     var isSettingsOpen by remember { mutableStateOf(false) }
     var popupWebView by remember { mutableStateOf<WebView?>(null) }
+    var popupUrl by remember { mutableStateOf("") }
     
     val sharedPrefs = remember { context.getSharedPreferences("app_settings", android.content.Context.MODE_PRIVATE) }
     var isTurboMode by remember {
@@ -355,6 +356,9 @@ fun BrowserScreen(
                                             allowContentAccess = true
                                             javaScriptCanOpenWindowsAutomatically = true
                                             setSupportMultipleWindows(true)
+                                            setSupportZoom(true)
+                                            builtInZoomControls = true
+                                            displayZoomControls = false
                                             mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
                                             
                                             val defaultUA = WebSettings.getDefaultUserAgent(context)
@@ -376,6 +380,7 @@ fun BrowserScreen(
                                                 request: WebResourceRequest?
                                             ): Boolean {
                                                 val url = request?.url?.toString() ?: return false
+                                                popupUrl = url
                                                 if (UrlHandler.handleUrl(context, url)) {
                                                     return true
                                                 }
@@ -384,6 +389,9 @@ fun BrowserScreen(
 
                                             override fun onPageFinished(view: WebView?, url: String?) {
                                                 super.onPageFinished(view, url)
+                                                if (url != null) {
+                                                    popupUrl = url
+                                                }
                                                 CookieManager.getInstance().flush()
                                             }
                                         }
@@ -391,6 +399,14 @@ fun BrowserScreen(
                                         webChromeClient = object : WebChromeClient() {
                                             override fun onCloseWindow(window: WebView?) {
                                                 popupWebView = null
+                                                popupUrl = ""
+                                            }
+
+                                            override fun onProgressChanged(view: WebView?, newProgress: Int) {
+                                                super.onProgressChanged(view, newProgress)
+                                                view?.url?.let {
+                                                    popupUrl = it
+                                                }
                                             }
                                         }
                                     }
@@ -486,6 +502,7 @@ fun BrowserScreen(
         androidx.compose.ui.window.Dialog(
             onDismissRequest = {
                 popupWebView = null
+                popupUrl = ""
             },
             properties = androidx.compose.ui.window.DialogProperties(
                 usePlatformDefaultWidth = false
@@ -504,25 +521,59 @@ fun BrowserScreen(
                     factory = { popupWebView!! }
                 )
                 
-                // Overlay persistent close button for safety
-                IconButton(
-                    onClick = {
-                        popupWebView = null
-                    },
+                Row(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
-                        .padding(16.dp)
-                        .size(48.dp)
-                        .background(
-                            color = MaterialTheme.colorScheme.surfaceVariant,
-                            shape = androidx.compose.foundation.shape.CircleShape
-                        )
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "Close Popup Window",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    if (popupUrl.contains("drive", ignoreCase = true)) {
+                        IconButton(
+                            onClick = {
+                                try {
+                                    val intent = android.content.Intent(
+                                        android.content.Intent.ACTION_VIEW,
+                                        android.net.Uri.parse(popupUrl)
+                                    )
+                                    context.startActivity(intent)
+                                } catch (e: Exception) {
+                                    android.widget.Toast.makeText(context, "Cannot open in external browser", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            modifier = Modifier
+                                .size(48.dp)
+                                .background(
+                                    color = MaterialTheme.colorScheme.surfaceVariant,
+                                    shape = androidx.compose.foundation.shape.CircleShape
+                                )
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Share,
+                                contentDescription = "Open in External Browser",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    IconButton(
+                        onClick = {
+                            popupWebView = null
+                            popupUrl = ""
+                        },
+                        modifier = Modifier
+                            .size(48.dp)
+                            .background(
+                                color = MaterialTheme.colorScheme.surfaceVariant,
+                                shape = androidx.compose.foundation.shape.CircleShape
+                            )
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Close Popup Window",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
         }

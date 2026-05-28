@@ -242,7 +242,7 @@ fun BrowserScreen(
                                     view: WebView?,
                                     request: WebResourceRequest?
                                 ): WebResourceResponse? {
-                                    val response = handleTurboModeInterception(view, request, isTurboMode)
+                                    val response = handleTurboModeInterception(view, request)
                                     if (response != null) return response
                                     return super.shouldInterceptRequest(view, request)
                                 }
@@ -366,7 +366,7 @@ fun BrowserScreen(
                                                 view: WebView?,
                                                 request: WebResourceRequest?
                                             ): WebResourceResponse? {
-                                                val response = handleTurboModeInterception(view, request, isTurboMode)
+                                                val response = handleTurboModeInterception(view, request)
                                                 if (response != null) return response
                                                 return super.shouldInterceptRequest(view, request)
                                             }
@@ -391,7 +391,6 @@ fun BrowserScreen(
                                         webChromeClient = object : WebChromeClient() {
                                             override fun onCloseWindow(window: WebView?) {
                                                 popupWebView = null
-                                                webViewRef?.reload()
                                             }
                                         }
                                     }
@@ -456,7 +455,6 @@ fun BrowserScreen(
         androidx.compose.ui.window.Dialog(
             onDismissRequest = {
                 popupWebView = null
-                webViewRef?.reload()
             },
             properties = androidx.compose.ui.window.DialogProperties(
                 usePlatformDefaultWidth = false
@@ -479,7 +477,6 @@ fun BrowserScreen(
                 IconButton(
                     onClick = {
                         popupWebView = null
-                        webViewRef?.reload()
                     },
                     modifier = Modifier
                         .align(Alignment.TopEnd)
@@ -581,7 +578,6 @@ fun BrowserScreen(
                                     if (checked) "Turbo Mode Enabled" else "Turbo Mode Disabled", 
                                     android.widget.Toast.LENGTH_SHORT
                                 ).show()
-                                webViewRef?.reload()
                             },
                             colors = SwitchDefaults.colors(
                                 checkedThumbColor = MaterialTheme.colorScheme.primary,
@@ -736,39 +732,55 @@ private fun selectUserAgent(defaultUA: String): String {
 
 private fun handleTurboModeInterception(
     view: WebView?,
-    request: WebResourceRequest?,
-    isTurboMode: Boolean
+    request: WebResourceRequest?
 ): WebResourceResponse? {
-    if (request == null) return null
+    if (view == null || request == null) return null
+    
+    val context = view.context ?: return null
+    val sharedPrefs = context.getSharedPreferences("app_settings", android.content.Context.MODE_PRIVATE)
+    val isTurboMode = sharedPrefs.getBoolean("turbo_mode", false)
     if (!isTurboMode) return null
+    
+    // Only intercept standard GET/HEAD requests to avoid breaking any POSTs/preflights
+    val method = request.method?.uppercase() ?: "GET"
+    if (method != "GET" && method != "HEAD") return null
     
     val urlStr = request.url?.toString() ?: return null
     val host = request.url?.host?.lowercase() ?: ""
     
-    if (host.contains("mediadelivery.net")) {
+    // Support all general Bunny Stream & CDN hostnames to mimic real extension behavior
+    val isTargetHost = host.contains("mediadelivery.net") || 
+                       host.contains("b-cdn.net") || 
+                       host.contains("bunnycdn.com")
+                       
+    if (isTargetHost) {
         try {
             val url = java.net.URL(urlStr)
             val connection = url.openConnection() as java.net.HttpURLConnection
-            connection.requestMethod = request.method
+            connection.requestMethod = method
             connection.connectTimeout = 15000
             connection.readTimeout = 15000
+            connection.instanceFollowRedirects = true
             
-            // Copy request headers
+            // Copy request headers while avoiding case-insensitive duplicates of critical headers
             request.requestHeaders?.forEach { (key, value) ->
-                connection.setRequestProperty(key, value)
+                if (!key.equals("Referer", ignoreCase = true) && 
+                    !key.equals("Origin", ignoreCase = true) && 
+                    !key.equals("User-Agent", ignoreCase = true)) {
+                    connection.setRequestProperty(key, value)
+                }
             }
             
-            // Inject user requested headers for iframe/video delivery
-            connection.setRequestProperty("Referer", "https://iframe.mediadelivery.net/")
+            // Inject correct custom headers as requested (strict, without trailing slashes)
+            connection.setRequestProperty("Referer", "https://iframe.mediadelivery.net")
             connection.setRequestProperty("Origin", "https://iframe.mediadelivery.net")
             
-            // Forward User-Agent
-            val viewUA = view?.settings?.userAgentString
-            if (!viewUA.isNullOrEmpty()) {
-                connection.setRequestProperty("User-Agent", viewUA)
-            }
+            // Safely retrieve and set User-Agent
+            val defaultUA = WebSettings.getDefaultUserAgent(context)
+            val cleanUA = selectUserAgent(defaultUA)
+            connection.setRequestProperty("User-Agent", cleanUA)
             
-            // Forward Cookies
+            // Forward standard Cookies
             val cookieManager = CookieManager.getInstance()
             val cookies = cookieManager.getCookie(urlStr)
             if (!cookies.isNullOrEmpty()) {
@@ -800,6 +812,16 @@ private fun handleTurboModeInterception(
                     responseHeaders[key] = values.joinToString(", ")
                 }
             }
+            
+            // Copy Set-Cookie headers back to CookieManager to maintain state synchrony
+            connection.headerFields?.forEach { (key, values) ->
+                if (key != null && key.equals("Set-Cookie", ignoreCase = true) && values != null) {
+                    values.forEach { cookieValue ->
+                        cookieManager.setCookie(urlStr, cookieValue)
+                    }
+                }
+            }
+            cookieManager.flush()
             
             val inputStream = if (responseCode in 200..299) {
                 connection.inputStream

@@ -563,7 +563,7 @@ fun BrowserScreen(
                                 color = titleColor
                             )
                             Text(
-                                text = "Enable custom video stream headers",
+                                text = "Don't Turn on if don't need",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = descColor
                             )

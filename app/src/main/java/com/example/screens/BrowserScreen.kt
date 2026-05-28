@@ -60,6 +60,11 @@ fun BrowserScreen(
 
     var isSettingsOpen by remember { mutableStateOf(false) }
     var popupWebView by remember { mutableStateOf<WebView?>(null) }
+    
+    val sharedPrefs = remember { context.getSharedPreferences("app_settings", android.content.Context.MODE_PRIVATE) }
+    var isTurboMode by remember {
+        mutableStateOf(sharedPrefs.getBoolean("turbo_mode", false))
+    }
 
     // Reference to native WebView for navigation command integration
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
@@ -233,6 +238,15 @@ fun BrowserScreen(
 
                             // Intercept URL loading redirects
                             webViewClient = object : WebViewClient() {
+                                override fun shouldInterceptRequest(
+                                    view: WebView?,
+                                    request: WebResourceRequest?
+                                ): WebResourceResponse? {
+                                    val response = handleTurboModeInterception(view, request, isTurboMode)
+                                    if (response != null) return response
+                                    return super.shouldInterceptRequest(view, request)
+                                }
+
                                 override fun shouldOverrideUrlLoading(
                                     view: WebView?,
                                     request: WebResourceRequest?
@@ -348,6 +362,15 @@ fun BrowserScreen(
                                         }
                                         
                                         webViewClient = object : WebViewClient() {
+                                            override fun shouldInterceptRequest(
+                                                view: WebView?,
+                                                request: WebResourceRequest?
+                                            ): WebResourceResponse? {
+                                                val response = handleTurboModeInterception(view, request, isTurboMode)
+                                                if (response != null) return response
+                                                return super.shouldInterceptRequest(view, request)
+                                            }
+
                                             override fun shouldOverrideUrlLoading(
                                                 view: WebView?,
                                                 request: WebResourceRequest?
@@ -519,6 +542,54 @@ fun BrowserScreen(
                         modifier = Modifier.padding(bottom = 8.dp)
                     )
 
+                    // Turbo Mode Toggle Row
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(
+                                color = if (isDark) Color(0xFF334155).copy(alpha = 0.3f) else Color(0xFFF1F5F9),
+                                shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
+                            )
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(
+                                text = "Turbo Mode",
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 16.sp
+                                ),
+                                color = titleColor
+                            )
+                            Text(
+                                text = "Enable custom video stream headers",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = descColor
+                            )
+                        }
+                        Switch(
+                            checked = isTurboMode,
+                            onCheckedChange = { checked ->
+                                isTurboMode = checked
+                                sharedPrefs.edit().putBoolean("turbo_mode", checked).apply()
+                                android.widget.Toast.makeText(
+                                    context, 
+                                    if (checked) "Turbo Mode Enabled" else "Turbo Mode Disabled", 
+                                    android.widget.Toast.LENGTH_SHORT
+                                ).show()
+                                webViewRef?.reload()
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = MaterialTheme.colorScheme.primary,
+                                checkedTrackColor = MaterialTheme.colorScheme.primaryContainer
+                            )
+                        )
+                    }
+
                     // 1. Join TG Channel (Branded Telegram Blue Option)
                     Button(
                         onClick = {
@@ -661,4 +732,93 @@ private fun selectUserAgent(defaultUA: String): String {
         
     // Return unified, stable user agent with EduZod/1.0 appended
     return "$baseChromeUA EduZod/1.0"
+}
+
+private fun handleTurboModeInterception(
+    view: WebView?,
+    request: WebResourceRequest?,
+    isTurboMode: Boolean
+): WebResourceResponse? {
+    if (request == null) return null
+    if (!isTurboMode) return null
+    
+    val urlStr = request.url?.toString() ?: return null
+    val host = request.url?.host?.lowercase() ?: ""
+    
+    if (host.contains("mediadelivery.net")) {
+        try {
+            val url = java.net.URL(urlStr)
+            val connection = url.openConnection() as java.net.HttpURLConnection
+            connection.requestMethod = request.method
+            connection.connectTimeout = 15000
+            connection.readTimeout = 15000
+            
+            // Copy request headers
+            request.requestHeaders?.forEach { (key, value) ->
+                connection.setRequestProperty(key, value)
+            }
+            
+            // Inject user requested headers for iframe/video delivery
+            connection.setRequestProperty("Referer", "https://iframe.mediadelivery.net/")
+            connection.setRequestProperty("Origin", "https://iframe.mediadelivery.net")
+            
+            // Forward User-Agent
+            val viewUA = view?.settings?.userAgentString
+            if (!viewUA.isNullOrEmpty()) {
+                connection.setRequestProperty("User-Agent", viewUA)
+            }
+            
+            // Forward Cookies
+            val cookieManager = CookieManager.getInstance()
+            val cookies = cookieManager.getCookie(urlStr)
+            if (!cookies.isNullOrEmpty()) {
+                connection.setRequestProperty("Cookie", cookies)
+            }
+            
+            connection.connect()
+            
+            val responseCode = connection.responseCode
+            val responseMessage = connection.responseMessage
+            
+            var contentType = connection.contentType ?: "application/octet-stream"
+            var encoding = "UTF-8"
+            if (contentType.contains(";")) {
+                val parts = contentType.split(";")
+                contentType = parts[0].trim()
+                for (i in 1 until parts.size) {
+                    val part = parts[i].trim()
+                    if (part.lowercase().startsWith("charset=")) {
+                        encoding = part.substring(8).trim()
+                    }
+                }
+            }
+            
+            // Gather response headers
+            val responseHeaders = HashMap<String, String>()
+            connection.headerFields?.forEach { (key, values) ->
+                if (key != null && values != null && values.isNotEmpty()) {
+                    responseHeaders[key] = values.joinToString(", ")
+                }
+            }
+            
+            val inputStream = if (responseCode in 200..299) {
+                connection.inputStream
+            } else {
+                connection.errorStream ?: connection.inputStream
+            }
+            
+            return WebResourceResponse(
+                contentType,
+                encoding,
+                responseCode,
+                if (responseMessage.isNullOrEmpty()) "OK" else responseMessage,
+                responseHeaders,
+                inputStream
+            )
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return null
+        }
+    }
+    return null
 }

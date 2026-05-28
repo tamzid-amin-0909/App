@@ -427,6 +427,11 @@ fun BrowserScreen(
                         // Connect embedded pull-to-refresh swipe container
                         SwipeRefreshLayout(ctx).apply {
                             addView(webView)
+                            
+                            // Require a deliberate hard pull down to refresh (350dp) to prevent accidental triggers during scroll
+                            val density = ctx.resources.displayMetrics.density
+                            setDistanceToTriggerSync((350 * density).toInt())
+                            
                             setOnRefreshListener {
                                 performSecurityAudit()
                                 if (!isVpnBlocked && !isProxyBlocked && !isSslUntrusted) {

@@ -424,8 +424,34 @@ fun BrowserScreen(
                             loadUrl(currentUrl)
                         }
 
-                        // Connect embedded pull-to-refresh swipe container
-                        SwipeRefreshLayout(ctx).apply {
+                        // Connect embedded pull-to-refresh swipe container with horizontal touch suppression
+                        object : SwipeRefreshLayout(ctx) {
+                            private var startX = 0f
+                            private var startY = 0f
+                            private val touchSlop = android.view.ViewConfiguration.get(ctx).scaledTouchSlop
+
+                            override fun onInterceptTouchEvent(event: android.view.MotionEvent): Boolean {
+                                when (event.action) {
+                                    android.view.MotionEvent.ACTION_DOWN -> {
+                                        startX = event.x
+                                        startY = event.y
+                                    }
+                                    android.view.MotionEvent.ACTION_MOVE -> {
+                                        val eventX = event.x
+                                        val eventY = event.y
+                                        val xDiff = Math.abs(eventX - startX)
+                                        val yDiff = Math.abs(eventY - startY)
+
+                                        // If user is predominantly swiping horizontally, do NOT trigger pull-to-refresh or vertical drag.
+                                        // This ensures they can scroll left/right without any interfering circles or interruptions.
+                                        if (xDiff > touchSlop && xDiff > yDiff) {
+                                            return false
+                                        }
+                                    }
+                                }
+                                return super.onInterceptTouchEvent(event)
+                            }
+                        }.apply {
                             addView(webView)
                             
                             // Require a deliberate hard pull down to refresh (350dp) to prevent accidental triggers during scroll

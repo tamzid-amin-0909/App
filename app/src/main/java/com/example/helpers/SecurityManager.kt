@@ -36,7 +36,7 @@ object SecurityManager {
             for (networkInterface in Collections.list(interfaces)) {
                 if (networkInterface.isUp) {
                     val name = networkInterface.name.lowercase()
-                    if (name.contains("tun") || name.contains("ppp") || name.contains("tap") || name.contains("p2p") || name.contains("vpn")) {
+                    if (name.contains("tun") || name.contains("ppp") || name.contains("tap") || name.contains("vpn")) {
                         return true
                     }
                 }

@@ -24,7 +24,16 @@ import com.example.widgets.BrowserOfflineView
 import com.example.widgets.BrowserProgressBar
 import com.example.widgets.BrowserTabBar
 import com.example.widgets.BrowserSecurityErrorView
+import com.example.widgets.DownloadsSection
+import com.example.widgets.BuiltInVideoPlayer
+import com.example.helpers.VideoDownloadManager
+import java.io.File
 import kotlinx.coroutines.flow.collectLatest
+import androidx.compose.ui.platform.testTag
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.graphics.Color
@@ -53,6 +62,57 @@ fun BrowserScreen(
     var progress by remember { mutableFloatStateOf(0f) }
     var isOnline by remember { mutableStateOf(true) }
 
+    // Download, detector & player states
+    var isDownloadsOpen by remember { mutableStateOf(false) }
+    var isMediaDetectorOpen by remember { mutableStateOf(false) }
+    val detectedUrls = remember { mutableStateMapOf<String, String>() }
+    var isDownloading by remember { mutableStateOf(false) }
+    var activeDownloadTitle by remember { mutableStateOf<String?>(null) }
+    var activeDownloadProgress by remember { mutableFloatStateOf(0f) }
+    var activePlayerFile by remember { mutableStateOf<File?>(null) }
+    var activePlayerTitle by remember { mutableStateOf("") }
+
+    val detectVideoUrl: (String) -> Unit = { urlStr ->
+        val lowerUrl = urlStr.lowercase()
+        
+        // Filter out static resources and small TS segments or encryption keys
+        val isStaticNoise = lowerUrl.contains(".ts") || 
+                            lowerUrl.contains(".key") || 
+                            lowerUrl.contains(".png") || 
+                            lowerUrl.contains(".jpg") || 
+                            lowerUrl.contains(".jpeg") || 
+                            lowerUrl.contains(".gif") || 
+                            lowerUrl.contains(".css") || 
+                            lowerUrl.contains(".js") || 
+                            lowerUrl.contains(".woff") || 
+                            lowerUrl.contains(".svg") || 
+                            lowerUrl.contains(".ico")
+
+        if (!isStaticNoise) {
+            val isM3u8 = lowerUrl.contains(".m3u8")
+            val isMp4 = lowerUrl.contains(".mp4") || lowerUrl.contains("mime=video/mp4")
+            val isWebmOrMkv = lowerUrl.contains(".webm") || lowerUrl.contains(".mkv") || lowerUrl.contains(".flv")
+            val isYtPlayback = lowerUrl.contains("googlevideo.com/videoplayback") || lowerUrl.contains("videoplayback?")
+
+            if (isM3u8 || isMp4 || isWebmOrMkv || isYtPlayback) {
+                // Generate a highly clean title using page title or default
+                val baseTitle = pageTitle.trim().ifEmpty { "Video Stream" }
+                val displayTitle = when {
+                    isYtPlayback -> "YouTube Video Stream (Direct)"
+                    isM3u8 -> "$baseTitle (HLS / m3u8)"
+                    isMp4 -> "$baseTitle (MP4 / Direct)"
+                    else -> "$baseTitle (WebM / Media)"
+                }
+
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    if (!detectedUrls.containsKey(urlStr)) {
+                        detectedUrls[urlStr] = displayTitle
+                    }
+                }
+            }
+        }
+    }
+
     // Security constraints state managers
     var isVpnBlocked by remember { mutableStateOf(false) }
     var isProxyBlocked by remember { mutableStateOf(false) }
@@ -64,7 +124,10 @@ fun BrowserScreen(
     
     val sharedPrefs = remember { context.getSharedPreferences("app_settings", android.content.Context.MODE_PRIVATE) }
     var isTurboMode by remember {
-        mutableStateOf(sharedPrefs.getBoolean("turbo_mode", false))
+        if (!sharedPrefs.contains("turbo_mode")) {
+            sharedPrefs.edit().putBoolean("turbo_mode", true).apply()
+        }
+        mutableStateOf(sharedPrefs.getBoolean("turbo_mode", true))
     }
 
     // Reference to native WebView for navigation command integration
@@ -155,6 +218,7 @@ fun BrowserScreen(
                     }
                 },
                 onSettingsClick = { isSettingsOpen = true },
+                onDownloadsClick = { isDownloadsOpen = true },
                 isOnline = isOnline
             )
 
@@ -238,11 +302,13 @@ fun BrowserScreen(
                             }
 
                             // Intercept URL loading redirects
-                            webViewClient = object : WebViewClient() {
+                             webViewClient = object : WebViewClient() {
                                 override fun shouldInterceptRequest(
                                     view: WebView?,
                                     request: WebResourceRequest?
                                 ): WebResourceResponse? {
+                                    val urlStr = request?.url?.toString() ?: ""
+                                    detectVideoUrl(urlStr)
                                     val response = handleTurboModeInterception(view, request)
                                     if (response != null) return response
                                     return super.shouldInterceptRequest(view, request)
@@ -260,6 +326,7 @@ fun BrowserScreen(
                                     super.onPageStarted(view, url, favicon)
                                     isLoading = true
                                     url?.let { currentUrl = it }
+                                    detectedUrls.clear()
                                     
                                     // Live Security Auditing to block users enabling tools post-app-launch
                                     performSecurityAudit()
@@ -370,6 +437,8 @@ fun BrowserScreen(
                                                 view: WebView?,
                                                 request: WebResourceRequest?
                                             ): WebResourceResponse? {
+                                                val urlStr = request?.url?.toString() ?: ""
+                                                detectVideoUrl(urlStr)
                                                 val response = handleTurboModeInterception(view, request)
                                                 if (response != null) return response
                                                 return super.shouldInterceptRequest(view, request)
@@ -493,6 +562,52 @@ fun BrowserScreen(
                         // Swipe refresh configuration update
                     }
                 )
+
+                if (detectedUrls.isNotEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(16.dp),
+                        contentAlignment = Alignment.BottomEnd
+                    ) {
+                        FloatingActionButton(
+                            onClick = { isMediaDetectorOpen = true },
+                            containerColor = Color(0xFFFF9800),
+                            contentColor = Color.Black,
+                            modifier = Modifier
+                                .navigationBarsPadding()
+                                .testTag("media_detector_fab")
+                        ) {
+                            Box(
+                                modifier = Modifier.padding(4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Movie,
+                                    contentDescription = "Detected streams",
+                                    modifier = Modifier.size(28.dp)
+                                )
+                                
+                                Box(
+                                    modifier = Modifier
+                                        .size(18.dp)
+                                        .background(Color.Red, CircleShape)
+                                        .align(Alignment.TopEnd)
+                                        .offset(x = 6.dp, y = (-6).dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = detectedUrls.size.toString(),
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 9.sp
+                                        )
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -573,6 +688,146 @@ fun BrowserScreen(
                             contentDescription = "Close Popup Window",
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                    }
+                }
+            }
+        }
+    }
+
+    if (isDownloadsOpen) {
+        DownloadsSection(
+            onDismissRequest = { isDownloadsOpen = false },
+            onPlayVideo = { file, title ->
+                activePlayerFile = file
+                activePlayerTitle = title
+            },
+            activeDownloadTitle = activeDownloadTitle,
+            activeDownloadProgress = activeDownloadProgress,
+            isDownloading = isDownloading
+        )
+    }
+
+    val playerFile = activePlayerFile
+    if (playerFile != null) {
+        BuiltInVideoPlayer(
+            videoFile = playerFile,
+            videoTitle = activePlayerTitle,
+            onDismiss = {
+                activePlayerFile = null
+                VideoDownloadManager.cleanPlaybackCache(context)
+            }
+        )
+    }
+
+    if (isMediaDetectorOpen) {
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { isMediaDetectorOpen = false }
+        ) {
+            val isDark = androidx.compose.foundation.isSystemInDarkTheme()
+            val bg = if (isDark) Color(0xFF0F172A) else Color(0xFFFFFFFF)
+            val textCol = if (isDark) Color(0xFFF1F5F9) else Color(0xFF0F172A)
+            val mutedCol = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B)
+
+            Card(
+                colors = CardDefaults.cardColors(containerColor = bg),
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+                    .testTag("media_detector_dialog")
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Detected Media (${detectedUrls.size})",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            color = textCol
+                        )
+                        IconButton(onClick = { isMediaDetectorOpen = false }) {
+                            Icon(Icons.Default.Close, contentDescription = null, tint = textCol)
+                        }
+                    }
+
+                    LazyColumn(
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.heightIn(max = 240.dp)
+                    ) {
+                        val urlList = detectedUrls.toList()
+                        items(urlList) { pair ->
+                            val url = pair.first
+                            val title = pair.second
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(
+                                        if (isDark) Color(0xFF1E293B) else Color(0xFFF1F5F9),
+                                        androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
+                                    )
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = title,
+                                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                        color = textCol,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = url,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = mutedCol,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                                val downloadingNow = isDownloading
+                                IconButton(
+                                    onClick = {
+                                        isMediaDetectorOpen = false
+                                        if (downloadingNow) {
+                                            android.widget.Toast.makeText(context, "Another download is already in progress", android.widget.Toast.LENGTH_SHORT).show()
+                                            return@IconButton
+                                        }
+                                        isDownloading = true
+                                        activeDownloadTitle = title
+                                        activeDownloadProgress = 0f
+                                        VideoDownloadManager.startSecureDownload(
+                                            context = context,
+                                            url = url,
+                                            title = title,
+                                            onProgress = { p -> activeDownloadProgress = p },
+                                            onComplete = { success, error ->
+                                                isDownloading = false
+                                                activeDownloadTitle = null
+                                                if (success) {
+                                                    android.widget.Toast.makeText(context, "Download complete: $title", android.widget.Toast.LENGTH_LONG).show()
+                                                } else {
+                                                    android.widget.Toast.makeText(context, "Download failed: $error", android.widget.Toast.LENGTH_LONG).show()
+                                                }
+                                            }
+                                        )
+                                    }
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Download,
+                                        contentDescription = "Download video",
+                                        tint = Color(0xFFFF9800)
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }

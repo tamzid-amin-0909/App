@@ -46,6 +46,7 @@ fun BrowserTabBar(
     onRefreshClick: () -> Unit,
     onHomeClick: () -> Unit,
     onSettingsClick: () -> Unit,
+    onDownloadsClick: () -> Unit,
     isOnline: Boolean,
     modifier: Modifier = Modifier
 ) {
@@ -207,6 +208,21 @@ fun BrowserTabBar(
                     Icon(
                         imageVector = Icons.Default.Settings,
                         contentDescription = "Open Settings",
+                        tint = iconTintEnabled,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+
+                // Downloads Button
+                IconButton(
+                    onClick = onDownloadsClick,
+                    modifier = Modifier
+                        .size(36.dp)
+                        .testTag("browser_downloads_btn")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Download,
+                        contentDescription = "Open Downloads",
                         tint = iconTintEnabled,
                         modifier = Modifier.size(20.dp)
                     )

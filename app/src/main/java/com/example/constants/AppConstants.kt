@@ -1,8 +1,8 @@
 package com.example.constants
 
 object AppConstants {
-    const val MAIN_URL = "https://everythingfree.iceiy.com/free00"
-    const val TARGET_DOMAIN = "everythingfree.iceiy.com"
+    const val MAIN_URL = "https://phositenew-11198773297.asia-southeast1.run.app"
+    const val TARGET_DOMAIN = "phositenew-11198773297.asia-southeast1.run.app"
     const val USER_AGENT_SUFFIX = " EduBrowser/1.0"
     
     // External App Package Names

@@ -61,6 +61,17 @@ fun BrowserScreen(
     var isSettingsOpen by remember { mutableStateOf(false) }
     var popupWebView by remember { mutableStateOf<WebView?>(null) }
     var popupUrl by remember { mutableStateOf("") }
+    var isPopupCloseEnabled by remember { mutableStateOf(false) }
+
+    LaunchedEffect(popupWebView) {
+        if (popupWebView != null) {
+            isPopupCloseEnabled = false
+            kotlinx.coroutines.delay(2500)
+            isPopupCloseEnabled = true
+        } else {
+            isPopupCloseEnabled = false
+        }
+    }
     
     val sharedPrefs = remember { context.getSharedPreferences("app_settings", android.content.Context.MODE_PRIVATE) }
     var isTurboMode by remember {
@@ -73,13 +84,12 @@ fun BrowserScreen(
 
     // Helper task to execute SSL pre-flight tests
     val performSecurityAudit: () -> Unit = {
-        val vpnActive = SecurityManager.isVpnActive(context)
         val proxyActive = SecurityManager.isProxyActive()
         
-        isVpnBlocked = vpnActive
+        isVpnBlocked = false
         isProxyBlocked = proxyActive
         
-        if (vpnActive || proxyActive) {
+        if (proxyActive) {
             webViewRef?.loadUrl("about:blank")
             webViewRef?.clearHistory()
         }
@@ -546,11 +556,15 @@ fun BrowserScreen(
     if (popupWebView != null) {
         androidx.compose.ui.window.Dialog(
             onDismissRequest = {
-                popupWebView = null
-                popupUrl = ""
+                if (isPopupCloseEnabled) {
+                    popupWebView = null
+                    popupUrl = ""
+                }
             },
             properties = androidx.compose.ui.window.DialogProperties(
-                usePlatformDefaultWidth = false
+                usePlatformDefaultWidth = false,
+                dismissOnBackPress = isPopupCloseEnabled,
+                dismissOnClickOutside = isPopupCloseEnabled
             )
         ) {
             Box(
@@ -603,20 +617,23 @@ fun BrowserScreen(
 
                     IconButton(
                         onClick = {
-                            popupWebView = null
-                            popupUrl = ""
+                            if (isPopupCloseEnabled) {
+                                popupWebView = null
+                                popupUrl = ""
+                            }
                         },
+                        enabled = isPopupCloseEnabled,
                         modifier = Modifier
                             .size(48.dp)
                             .background(
-                                color = MaterialTheme.colorScheme.surfaceVariant,
+                                color = if (isPopupCloseEnabled) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
                                 shape = androidx.compose.foundation.shape.CircleShape
                             )
                     ) {
                         Icon(
                             imageVector = Icons.Default.Close,
                             contentDescription = "Close Popup Window",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            tint = if (isPopupCloseEnabled) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
                         )
                     }
                 }

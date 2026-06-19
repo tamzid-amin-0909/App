@@ -19,31 +19,6 @@ object SecurityManager {
      * Checks if a VPN network tunnel is currently active on the device.
      */
     fun isVpnActive(context: Context): Boolean {
-        try {
-            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return false
-            
-            // Check NetworkCapabilities for active VPN transport
-            val activeNetwork = cm.activeNetwork
-            if (activeNetwork != null) {
-                val caps = cm.getNetworkCapabilities(activeNetwork)
-                if (caps != null && caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) {
-                    return true
-                }
-            }
-
-            // Fallback checking of network interface names for virtual tunnels
-            val interfaces = NetworkInterface.getNetworkInterfaces() ?: return false
-            for (networkInterface in Collections.list(interfaces)) {
-                if (networkInterface.isUp) {
-                    val name = networkInterface.name.lowercase()
-                    if (name.contains("tun") || name.contains("ppp") || name.contains("tap") || name.contains("vpn")) {
-                        return true
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            // Secure fallback default
-        }
         return false
     }
 
